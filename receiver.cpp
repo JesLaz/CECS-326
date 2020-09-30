@@ -20,12 +20,12 @@ void recieveMessage(int qid){
 	
 	msgrcv(qid, (struct my_msgbuf*)&msg, size, 113, 0);
 	cout << "Receiver received message, queue id " << qid << " through commandline partner" << endl;
-	cout << "Message: " << msg.msg << endl;
+	cout << "Message received: " << msg.msg << endl;
 }
 
 int main(int argc, const char *argv[]){
 	cout << "Receiver, " << getpid() << " beings execution" << endl;
-	int msg_qid = atoi(argv[1]);
+	int msg_qid = atoi(argv[1]);//Convert the command-line argument into an integer
 	recieveMessage(msg_qid);
 	cout << "Receiver terminates" << endl;
 	return (0);

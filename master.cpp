@@ -26,6 +26,7 @@ int main(){
 		char const *qidc = qidString.c_str();
 		cout << "qidc in sender " << qidc << endl;
 		execlp("./sender", "sender", qidc, NULL);
+		sleep(1);
 		exit(0);
 	}
 
@@ -47,6 +48,6 @@ int main(){
 	while(wait(NULL) != -1);
 
 	msgctl(qid, IPC_RMID, NULL);
-	cout << "Message queue: " << qid << " terminated" << endl;
+	cout << "Master recevied terminatoin signals from both child processes, removed message queue, and terminates " << endl;
 	return 0;
 }
