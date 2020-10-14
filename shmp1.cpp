@@ -16,70 +16,83 @@ using namespace std;
 
 CLASS myCLASS = {"4321", "082620", "Operating Systems", 20};
 #define NCHILD 3
-#define SNAME "shmpSem"
 
+//Function prototypes 
 int shm_init(void *);
-void wait_and_wrap_up(int [], void*, int, sem_t *);
+void wait_and_wrap_up(int [], void*, int);
 void rpterror(char *, char *);
 
 
 main(int argc, char *argv[]){
+	/*creates var to stores pid for child processes, 
+	i for the process number,
+	and the shared memory segment ID*/
 	int child[NCHILD], i , shmid;
-	void *shm_ptr;
-	char ascshmid[10], pname[14];
 
-	sem_t *sem;
-	void *semPtr;
-	shmid = shm_init(shm_ptr);
+	void *shm_ptr;//Pointer to shared memory segment
+	char ascshmid[10], pname[14];//creates char array for shmid and for the process name
+
+	shmid = shm_init(shm_ptr);//Initializes shared memory segment and assigns identifier
 	sprintf(ascshmid, "%d", shmid);
-	sem = sem_open(SNAME, O_CREAT, 0644, 1);
 	
-	if(sem == SEM_FAILED){
-		perror("Semaphore Init Failed");
-		exit(1);
-	}
-	
-	for(int i = 0; i < NCHILD; i++){
+	//Create NCHILD processes
+	for(i = 0; i < NCHILD; i++){
+		//Create process
 		child[i] = fork();
+		//Method for determining if the creation of the child process is successful or not
 		switch (child[i]){
+			//Child process failed
 			case -1:
 				sprintf(pname, "child%d", i+1);
 				rpterror ((char *)"fork failed", pname);
 				exit(1);
+			//Child process successful
 			case 0:
 				sprintf(pname, "shmc%d", i+1);
-				execl("shmc1", pname, ascshmid, SNAME, (char *)0);
+				execl("shmc1", pname, ascshmid, (char *)0);
 				rpterror ((char *)"execl failed", pname);
 				exit(2);
 			}
 		}
-		wait_and_wrap_up (child, shm_ptr, shmid, sem);
+		//Utilies the helper function to wait for all process then properly terminate and detach memory
+		wait_and_wrap_up (child, shm_ptr, shmid);
 	}
 
+/*Initialize shared memory segment and assign it to the given pointer
+and returns the ID of the created memory*/
 int shm_init(void *shm_ptr){
 	int shmid;
+	//Creates a shared memory segment that has size of strcut CLASS and permission flag to create
 	shmid = shmget(ftok(".", 'u'), sizeof(CLASS), 0600 | IPC_CREAT);
 
 	if (shmid == -1){
 		perror("shmget failed");
 		exit(3);
 	}
+	//Attaches the shared memory to the passed in pointer
 	shm_ptr = shmat(shmid, (void *)0, 0);
 
+	//Error catching if attach failed
 	if(shm_ptr == (void *)-1){
 		perror("shmat failed");
 		exit(4);
 	}
+	//Data of struct CLASS is copied into the pointer as well as the size of the data in the struct
 	memcpy(shm_ptr, (void *) &myCLASS, sizeof(CLASS));
 	return(shmid);
 }
 
-void wait_and_wrap_up(int child[], void *shm_ptr, int shmid, sem_t *sem){
+/*Helper function that waits for all the running child processes to terminate then 
+detaches the shared memory segment from its pointer and then removes that segment*/
+void wait_and_wrap_up(int child[], void *shm_ptr, int shmid){
 	int wait_rtn, w, ch_active = NCHILD;
 
+	//Continues while there are still active processes running
 	while(ch_active > 0){
+		//Waits for process termination
 		wait_rtn = wait((int *) 0);
-		for(int w = 0; w < NCHILD; w++){
+		//Decrements ch_active when a processes is terminated
+		for(w = 0; w < NCHILD; w++){
 			if(child[w] == wait_rtn){
 				ch_active--;
 				break;
@@ -87,13 +100,16 @@ void wait_and_wrap_up(int child[], void *shm_ptr, int shmid, sem_t *sem){
 		}
 	}
 	cout << "Parent removing shm" << endl;
+	//Detaches the shared memory segment from the given pointer
 	shmdt(shm_ptr);
+	//Removes the shared memory segment identified by its ID and destroys it and its struct
 	shmctl(shmid, IPC_RMID, (struct shmid_ds *) 0);
-	sem_unlink(SNAME);
-	sem_close(sem);
+
 	exit(0);
 }
 
+/*Helper function to print the resulting error message caused by 
+the given parameter*/
 void rpterror(char *string, char *pname){
 	char errline[50];
 	sprintf(errline, "%s %s", string, pname);
