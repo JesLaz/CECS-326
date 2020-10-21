@@ -28,9 +28,9 @@ main(int argc, char *argv[]){
 	int pid = getpid();
 	key_t key = ftok(".", 'u');
 	
-	int ct = semctl(327680, 0, IPC_RMID);
+
 	int semid = semget(key, 1, IPC_CREAT | IPC_EXCL | 0666);
-	char semidChar[10];
+	char semidChar[10];//Convert the semaphore into a string so it can be passed as an argument in execl
 	sprintf(semidChar, "%d", semid);
 	int ctl = semctl(semid, 0, SETVAL, 1);//init value
 
