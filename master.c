@@ -1,95 +1,126 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <fcntl.h>
+#include "accounts.h"
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
 #include <sys/shm.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <errno.h>
-#include <sys/ipc.h>
-#include "myShm.h"
+#include <unistd.h>
+#include <stdlib.h>
+//#include <iostream>
+#include <stdio.h>
+#include <memory.h>
+#include <pthread.h>
+#include <fcntl.h>
+#include <semaphore.h>
 
-int main(int argc, char *argv[]){
-	const char *name = "/my_shm"; /*file name*/
-	const int SIZE = 4096; /*file size*/
 	
-	int shm_fd; /*file descriptor, from shm_open()*/
-	struct CLASS *shm_base; /*base address, from mmap()*/
-	//void *ptr; /*shm_base is fixed, ptr is movable*/
+//Jessie Lazo
+	
+int main(int argc, char *argv[]){
+	char *name;
+	name = argv[3];
+	const int SIZE = 4096;
 
-	/*create the shared memory segment*/
+	int shm_fd;
+	char *shm_base;
+	struct ACCOUNTS *base;
+
+	printf("Master begins execution\n");
+
 	shm_fd = shm_open(name, O_CREAT | O_RDWR, 0666);
 	//error handling
 	if(shm_fd == -1){
 		printf("Master: Shared memory failed: %s\n", strerror(errno));
 		exit(1);
 	}
-	/*Configure the size of the shared memory segment*/
 	ftruncate(shm_fd, SIZE);
-
-	/*Map shared memory segment in the address space of the process*/
-	shm_base = mmap(0, SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd,0);
+	shm_base = mmap(0, SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
 
 	//error handling
 	if(shm_base == MAP_FAILED){
 		printf("Master: Map failed: %s\n", strerror(errno));
-		/*close and shm_unlink*/
+		/*Close and shm_unlink*/
 		exit(1);
 	}
 
+	base = (struct ACCOUNTS*) shm_base;
+	base->nAccounts = 2;
+	base->accounts[0] = atoi(argv[1]);
+	base->accounts[1] = atoi(argv[2]);
+	
+	printf("Account 1 Balance: $%d\n", base->accounts[0]);
+	printf("Account 2 Balance: $%d\n", base->accounts[1]);
+	
+	sem_t *semaphore1;
+	sem_t *semaphore2;
+
+	semaphore1 = sem_open(argv[4], O_CREAT, 0644, 1);
+	if(semaphore1 == SEM_FAILED){
+		perror("Semaphore initialization failed");
+		exit(1);
+	}
+
+	semaphore2 = sem_open(argv[5], O_CREAT, 0644, 1);
+	if(semaphore2 == SEM_FAILED){
+		perror("Semaphore initialization failed");
+		exit(1);
+	}
+
+	printf("Forking Child 1\n");
 	pid_t pid;
-	printf("Master created %s", argv[1]);
-	printf(" child processes to execute slave\n");
-	int y = atoi(argv[1]);
-	/*Now write into the shared memory region by running through the child process*/
-	for(int i = 0; i < y; i++){
-		pid = fork();
-		if(pid < 0){
-			printf("Fork failed");
-			return 1;
-		}
-		if(pid == 0){
-			int num = i+1;
-			char snum[5];
-			sprintf(snum, "%d", num);
-			printf("Enters child");
-			char *cmd = "./slave";
-			char *argv[4];
-			argv[0] = "./slave";
-			argv[1] = "my_shm";
-			argv[2] = snum;
-			argv[3] = NULL;
-			execvp(cmd, argv);
-			exit(0);
-		}
-		else{
-			//Allow child processes to terminate before parent process continues
-			wait(NULL);
-		}
+	pid = fork();
+	if(pid < 0){
+		fprintf(stderr, "Fork Failed\n");
+		return 1;
 	}
-	printf("Master recived termination signals from all %s", argv[1]);
-	printf(" processes\n");
-	printf("Content of shared memory filled by child processes:\n");
-	for(int i = 0; i < y; i++){
-		printf("Array element %d", i);
-		printf(" : %d", shm_base->response[i]);
-		printf("\n");
+	else if(pid == 0){
+		char *args[] = {"./transfer", argv[3], argv[4], argv[5], "1", "2", "50", NULL};
+		execv("transfer", args);
 	}
 	
-	
-	printf("Master removed shared memory segment, and is exiting\n");
-	//Attempt to unlink at the end
+
+	printf("Account 1 Balance: $%d\n", base->accounts[0]);
+	printf("Account 2 Balance: $%d\n", base->accounts[1]);
+
+	printf("Forking Child 2\n");
+	pid = fork();
+	if(pid < 0){
+		fprintf(stderr, "Fork Failed\n");
+		return 1;
+	}
+	else if(pid == 0){
+		char *args[] = {"./transfer", argv[3], argv[5], argv[4], "2", "1", "25", NULL};
+		execv("transfer", args);
+	}
+	wait(NULL);
+	wait(NULL);
+
+	printf("Account 1 Balance: $%d\n", base->accounts[0]);
+	printf("Account 2 Balance: $%d\n", base->accounts[1]);
+
 	if(munmap(shm_base, SIZE) == -1){
-		printf("prod: Unmap failed: %s\n", strerror(errno));
+		printf("Master Unmap Failed %s\n", strerror(errno));
 		exit(1);
 	}
-	/* close shared memory segment as if it was a file */
-	if (close(shm_fd) == -1){
-		printf("prod: Close failed: %s\n", strerror(errno));
-		exit(1);
+
+	if(close(shm_fd) == -1){
+		printf("Master Close Failed %s\n", strerror(errno));
+		exit(2);
 	}
+
+	if(shm_unlink(name) != 0){
+		perror("Master unlink() Failed");
+		exit(3);
+	}
+
+	sem_close(semaphore1);
+	sem_unlink(argv[4]);
+	sem_close(semaphore2);
+	sem_unlink(argv[5]);
+
+	printf("Master Ending\n");
+
 	return 0;
 }
