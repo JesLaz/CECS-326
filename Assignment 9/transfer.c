@@ -8,25 +8,31 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <stdlib.h>
-//#include <iostream>
 #include <stdio.h>
 #include <memory.h>
 #include <pthread.h>
 #include <fcntl.h>
-#include <semaphore.h>
+//#include <semaphore.h>
 	
 //Jessie Lazo
 
-void transfer(sem_t*, sem_t*, struct ACCOUNTS*, int, int, int);
+//void transfer(sem_t*, sem_t*, struct ACCOUNTS*, int, int, int);
+void transfer(struct ACCOUNTS*, int, int, int);
 	
 int main(int argc, char *argv[]){
 	printf("Child Beginning Execution\n");
 	char *shmName = argv[1];
+	/*
 	char *sName1 = argv[2];
 	char *sName2 = argv[3];
 	int account1 = (atoi(argv[4])) - 1;
 	int account2 = (atoi(argv[5])) - 1;
 	int ammount = atoi(argv[6]);
+	*/
+
+	int account1 = (atoi(argv[2])) - 1;
+	int account2 = (atoi(argv[3])) - 1;
+	int ammount = atoi(argv[4]);	
 
 	const int SIZE = 4096;
 	int shm_f;
@@ -65,7 +71,7 @@ int main(int argc, char *argv[]){
 
 
 
-	transfer(semaphore1, semaphore2, accounts, account1, account2, ammount);
+	transfer(accounts, account1, account2, ammount);
 
 	if(munmap(shm_base, SIZE) == -1){
 		printf("Transfer Unmap Failed: %s\n", strerror(errno));
@@ -81,13 +87,17 @@ int main(int argc, char *argv[]){
 //void transfer(sem_t *s1, sem_t *s2, struct ACCOUNTS *a, int sender, int receiver, int ammount){
 void transfer(struct ACCOUNTS *a, int sender, int receiver, int ammount){
 	//uses the account number of the sender and the reciever to index the accountSems
-	sem_wait(s1);
+	//sem_wait(s1);
+	sem_wait(&(a->accountSems[sender]));
 	printf("Removing $%d from Account %d\n", ammount, sender + 1);
 	a->accounts[sender] = (a->accounts[sender]) - ammount;
-	sem_post(s1);
+	//sem_post(s1);
+	sem_post(&(a->accountSems[sender]));
 	sleep(3);
-	sem_wait(s2);
+	//sem_wait(s2);
+	sem_wait(&(a->accountSems[receiver]));
 	printf("Adding $%d to Account %d\n", ammount, receiver + 1);
 	a->accounts[receiver] = (a->accounts[receiver]) + ammount;
-	sem_post(s2);
+	//sem_post(s2);
+	sem_post(&(a->accountSems[receiver]));
 }
